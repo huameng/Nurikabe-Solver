@@ -14,14 +14,31 @@ import java.util.*;
 public class NurikabeSolver {
 	
 	public char[][] solveBoard(NurikabeBoard board) {
+		int size = board.board.length;
 		char[][] inProgressBoard = new char[size][size];
-		forceBlackSquares(inProgressBoard);
+		for(int i=0;i<size;++i) {
+			for(int j=0;j<size;++j) {
+				if (board.board[i][j] == 0) {
+					inProgressBoard[i][j] = '?';
+				}
+				else {
+					inProgressBoard[i][j] = 'O';
+				}
+			}
+		}
+		// until I add a way to track progress and figure out when a) no progress is being made and b) the puzzle is complete
+		// i will just do a certain number of iterations and then stop. hopefully it finishes by then
+		for(int i=0;i<1;++i) {
+			forceBlackSquares(inProgressBoard, board);
+			forceWhiteSquares(inProgressBoard, board);
+		}
 
-		return maybeBoard;
+		return inProgressBoard;
 	}
 	
 	public char[][] bruteForceBoard(NurikabeBoard board) {
 		// right now only works with boards of size <= 5, else OVERFLOW'D
+		int size = board.board.length;
 		char[][] maybeBoard = new char[size][size];
 		
 		for(int i=0;i<(1<<(size*size));++i) {
@@ -35,22 +52,83 @@ public class NurikabeSolver {
 				temp /= 2;
 			}
 			// now we have to do some checks
-			if (checkBoard(maybeBoard)) {
+			if (checkBoard(maybeBoard, board)) {
 				return maybeBoard;
 			}
-		}*
+		}
+		return null;
 	}
 	
-	public void forceBlackSquares(char[][] board) {
-		// this should be separated into multiple steps!
-		int size = board.length;
+	public void forceBlackSquares(char[][] inProgressBoard, NurikabeBoard board) {
+		fillInIslandSeparators(inProgressBoard, board);
+		surroundCompletedIslands(inProgressBoard, board);
+		fillInUnreachableSquares(inProgressBoard, board);
+		// here, i should mark what possible numbers can reach every blank square on the map. squares that aren't reachable should be black
+	}
+	
+	public void forceWhiteSquares(char[][] inProgressBoard, NurikabeBoard board) {
+		fillInTwoByTwos(inProgressBoard, board);
+	}
+	
+	public void fillInUnreachableSquares(char[][] inProgressBoard, NurikabeBoard board) {
+		int size = board.board.length;
+		int[] dx = {0,0,1,-1};
+		int[] dy = {-1,1,0,0};
+		boolean[][] reachable = new boolean[size][size];
+		for(int i=0;i<size;++i) {
+			for(int j=0;j<size;++j) {
+				if (board.board[i][j] != 0) {
+					boolean[][] visited = new boolean[size][size];
+					// time to BFS!
+					ArrayDeque<Integer> q = new ArrayDeque<Integer>();
+					reachable[i][j] = true;
+					visited[i][j] = true;
+					q.offer(board.board[i][j]*size*size+i*size+j);
+					while(!q.isEmpty()) {
+						int cur = q.poll();
+						int curY = (cur%(size*size))/size;
+						int curX = cur%size;
+						int stepsLeft = cur/(size*size) - 1;
+						if (stepsLeft == 0) {
+							continue;
+						}
+						for(int k=0;k<dx.length;++k) {
+							int newY = curY + dy[k];
+							int newX = curX + dx[k];
+							if (newY < 0 || newX < 0 || newY >= size || newX >= size) {
+								continue;
+							}
+							if (visited[newY][newX]) {
+								continue;
+							}
+							if (inProgressBoard[newY][newX] == 'X') {
+								continue;
+							}
+							reachable[newY][newX] = true;
+							visited[newY][newX] = true;
+							q.offer(stepsLeft*size*size+newY*size+newX);
+						}
+					}
+				}
+			}
+		}
+		for(int i=0;i<size;++i) {
+			for(int j=0;j<size;++j) {
+				if (!reachable[i][j]) {
+					inProgressBoard[i][j] = 'X';
+				}
+			}
+		}
+	}
+	
+	public void fillInIslandSeparators(char[][] inProgressBoard, NurikabeBoard board) {
+		int size = board.board.length;
 		int[] dx = {0,0,1,-1};
 		int[] dy = {-1,1,0,0};
 		// squares that are next to 2 or more numbers must be black. if they were white, there would be an island with more than one number
 		for(int i=0;i<size;++i) {
 			for(int j=0;j<size;++j) {
-				if (this.board[i][j] != 0) {
-					board[i][j] = (char)('a'+this.board[i][j]);
+				if (board.board[i][j] != 0) {
 					continue;
 				}
 				int count = 0;
@@ -60,22 +138,90 @@ public class NurikabeSolver {
 					if (newY < 0 || newX < 0 || newY >= size || newX >= size) {
 						continue;
 					}
-					if (this.board[newY][newX] > 0 || board[newY][newX] == 'X') {
+					if (board.board[newY][newX] > 0 || inProgressBoard[newY][newX] == 'O') {
 						++count;
 					}
 				}
 				if (count > 1) {
-					board[i][j] = 'O';
+					inProgressBoard[i][j] = 'X';
 				}
-				else {
-					board[i][j] = '?';
+			}
+		}		
+	}
+	
+	public void surroundCompletedIslands(char[][] inProgressBoard, NurikabeBoard board) {
+		int size = board.board.length;
+		int[] dx = {0,0,1,-1};
+		int[] dy = {-1,1,0,0};
+		boolean[][] visited = new boolean[size][size];
+		for(int i=0;i<size;++i) {
+			for(int j=0;j<size;++j) {
+				if (board.board[i][j] != 0) {
+					// now we do a BFS around this island to see how many squares are in it. we want to match target exactly
+					// if we do match it exactly, our island is done and should be surrounded by black squares
+					int targetIslandSize = board.board[i][j];
+					ArrayList<Integer> thisIsland = new ArrayList<Integer>();
+					ArrayDeque<Integer> q = new ArrayDeque<Integer>();
+					thisIsland.add(i*size+j);
+					q.add(i*size+j);
+					visited[i][j] = true;
+					int islandSize = 1;
+					while(!q.isEmpty()) {
+						int cur = q.poll();
+						int curY = cur/size;
+						int curX = cur%size;
+						for(int k=0;k<dx.length;++k) {
+							int newY = curY + dy[k];
+							int newX = curX + dx[k];
+							if (newY < 0 || newX < 0 || newY >= size || newX >= size) {
+								continue;
+							}
+							if (visited[newY][newX]) {
+								continue;
+							}
+							if (inProgressBoard[newY][newX] != 'O') {
+								continue;
+							}
+							++islandSize;
+							visited[newY][newX] = true;
+							q.offer(newY*size+newX);
+							thisIsland.add(newY*size+newX);
+						}
+					}
+					if (targetIslandSize == islandSize) {
+						for(int point : thisIsland) {
+							int curX = point%size;
+							int curY = point/size;
+							for(int k=0;k<dx.length;++k) {
+								int newY = curY + dy[k];
+								int newX = curX + dx[k];
+								if (newY < 0 || newX < 0 || newY >= size || newX >= size) {
+									continue;
+								}
+								if (inProgressBoard[newY][newX] != '?') {
+									continue;
+								}
+								inProgressBoard[newY][newX] = 'X';
+							}
+						}
+					}
 				}
 			}
 		}
-		// here, i should mark what possible numbers can reach every blank square on the map. squares that aren't reachable should be black
 	}
 	
-	public boolean checkBoard(char[][] maybeBoard) {
+	public void fillInTwoByTwos(char[][] inProgressBoard, NurikabeBoard board) {
+		int size = board.board.length;
+		for(int i=0;i<size-1;++i) {
+			for(int j=0;j<size-1;++j) {
+				if (inProgressBoard[i+1][j] == 'X' && inProgressBoard[i][j+1] == 'X' && inProgressBoard[i+1][j+1] == 'X') {
+					inProgressBoard[i][j] = 'O';
+				}
+			}
+		}
+	}
+	
+	public boolean checkBoard(char[][] maybeBoard, NurikabeBoard board) {
 		// make sure the maybeBoard matches up with the given board with numbers
 		int size = maybeBoard.length;
 		Queue<Integer> q = new LinkedList<Integer>();
@@ -129,7 +275,7 @@ public class NurikabeSolver {
 		
 		// step 2: make sure there are the requested number of black squares
 		for(int i=0;i<size*size;++i) {
-			blackNeeded -= board[i/size][i%size];
+			blackNeeded -= board.board[i/size][i%size];
 		}
 		
 		if (blackNeeded != blackFound) {
@@ -162,8 +308,8 @@ public class NurikabeSolver {
 					int curY = cur/size;
 					int curX = cur%size;
 					visited[curY][curX] = true;
-					numbersSum += board[curY][curX];
-					if (board[curY][curX] > 0) {
+					numbersSum += board.board[curY][curX];
+					if (board.board[curY][curX] > 0) {
 						++numbersFound;
 					}
 					++poolSize;

@@ -8,9 +8,10 @@ import java.util.*;
 public class Main {
 	public static void main(String[] args) {
 		int SIZE = 5;
-		int[][] board = {{4,0,3,0,0},{0,0,0,0,0},{0,0,0,2,0},{0,0,0,0,0},{3,0,0,0,0}};
-		Nurikabe n = new Nurikabe(board);
-		char[][] solvedBoard = n.solveBoard();
+		int[][] intBoard = {{2,0,1,0,1},{0,0,0,0,0},{0,0,0,2,0},{2,0,0,0,4},{0,0,0,0,0}};
+		NurikabeBoard board = new NurikabeBoard(intBoard);
+		NurikabeSolver solver = new NurikabeSolver();
+		char[][] solvedBoard = solver.solveBoard(board);
 		for(int i=0;i<SIZE;++i) {
 			// O is open, X is filled, ? is unknown yet (still working on the algorithm!)
 			System.out.println(solvedBoard[i]);
