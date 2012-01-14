@@ -28,9 +28,17 @@ public class NurikabeSolver {
 		}
 		// until I add a way to track progress and figure out when a) no progress is being made and b) the puzzle is complete
 		// i will just do a certain number of iterations and then stop. hopefully it finishes by then
-		for(int i=0;i<1;++i) {
+		for(int i=0;i<100;++i) {
 			forceBlackSquares(inProgressBoard, board);
+			// for(int z=0;z<size;++z) {
+				// System.out.println(inProgressBoard[z]);
+			// }
+			// System.out.println();
 			forceWhiteSquares(inProgressBoard, board);
+			// for(int z=0;z<size;++z) {
+				// System.out.println(inProgressBoard[z]);
+			// }
+			// System.out.println();
 		}
 
 		return inProgressBoard;
@@ -60,14 +68,117 @@ public class NurikabeSolver {
 	}
 	
 	public void forceBlackSquares(char[][] inProgressBoard, NurikabeBoard board) {
+		int size = board.board.length;
 		fillInIslandSeparators(inProgressBoard, board);
 		surroundCompletedIslands(inProgressBoard, board);
 		fillInUnreachableSquares(inProgressBoard, board);
-		// here, i should mark what possible numbers can reach every blank square on the map. squares that aren't reachable should be black
+		fillInNecessaryBlacks(inProgressBoard, board);
 	}
 	
 	public void forceWhiteSquares(char[][] inProgressBoard, NurikabeBoard board) {
 		fillInTwoByTwos(inProgressBoard, board);
+		fillInNecessaryWhites(inProgressBoard, board);
+	}
+	
+	public void fillInNecessaryWhites(char[][] inProgressBoard, NurikabeBoard board) {
+		int size = board.board.length;
+		int[] dx = {0,0,1,-1};
+		int[] dy = {-1,1,0,0};
+		for(int i=0;i<size;++i) {
+			for(int j=0;j<size;++j) {
+				if (inProgressBoard[i][j] == 'O') {
+					boolean[][] visited = new boolean[size][size];
+					int islandSize = 1;
+					int requestedSize = board.board[i][j];
+					ArrayList<Integer> breathingPoints = new ArrayList<Integer>();
+					ArrayDeque<Integer> q = new ArrayDeque<Integer>();
+					visited[i][j] = true;
+					q.offer(i*size+j);
+					while(!q.isEmpty()) {
+						int cur = q.poll();
+						int curY = cur/size;
+						int curX = cur%size;
+						for(int k=0;k<dx.length;++k) {
+							int newY = curY + dy[k];
+							int newX = curX + dx[k];
+							if (newY < 0 || newX < 0 || newX >= size || newY >= size) {
+								continue;
+							}
+							if (visited[newY][newX]) {
+								continue;
+							}
+							switch (inProgressBoard[newY][newX]) {
+								case 'X':
+									break;
+								case 'O':
+									++islandSize;
+									q.offer(newY*size + newX);
+									visited[newY][newX] = true;
+									requestedSize = Math.max(requestedSize, board.board[newY][newX]);
+									break;
+								case '?':
+									breathingPoints.add(newY*size + newX);
+									visited[newY][newX] = true;
+							}
+						}
+					}
+					if ((islandSize < requestedSize || requestedSize == 0) && breathingPoints.size() == 1) {
+						int newWhite = breathingPoints.get(0);
+						inProgressBoard[newWhite/size][newWhite%size] = 'O';
+					}
+				}
+			}
+		}
+	}
+	
+	public void fillInNecessaryBlacks(char[][] inProgressBoard, NurikabeBoard board) {
+		int size = board.board.length;
+		int[] dx = {0,0,1,-1};
+		int[] dy = {-1,1,0,0};
+		for(int i=0;i<size;++i) {
+			for(int j=0;j<size;++j) {
+				if (inProgressBoard[i][j] == 'X') {
+					boolean[][] visited = new boolean[size][size];
+					int islandSize = 1;
+					int requestedSize = board.board[i][j];
+					ArrayList<Integer> breathingPoints = new ArrayList<Integer>();
+					ArrayDeque<Integer> q = new ArrayDeque<Integer>();
+					q.offer(i*size+j);
+					while(!q.isEmpty()) {
+						int cur = q.poll();
+						int curY = cur/size;
+						int curX = cur%size;
+						for(int k=0;k<dx.length;++k) {
+							int newY = curY + dy[k];
+							int newX = curX + dx[k];
+							if (newY < 0 || newX < 0 || newX >= size || newY >= size) {
+								continue;
+							}
+							if (visited[newY][newX]) {
+								continue;
+							}
+							switch (inProgressBoard[newY][newX]) {
+								case 'O':
+									break;
+								case 'X':
+									++islandSize;
+									q.offer(newY*size + newX);
+									visited[newY][newX] = true;
+									requestedSize = Math.max(requestedSize, board.board[newY][newX]);
+									break;
+								case '?':
+									breathingPoints.add(newY*size + newX);
+									visited[newY][newX] = true;
+							}
+						}
+					}
+					if (islandSize < board.totalBlacks && breathingPoints.size() == 1) {
+						int newWhite = breathingPoints.get(0);
+						inProgressBoard[newWhite/size][newWhite%size] = 'X';
+					}
+				}
+			}
+		}
 	}
 	
 	public void fillInUnreachableSquares(char[][] inProgressBoard, NurikabeBoard board) {
@@ -128,21 +239,46 @@ public class NurikabeSolver {
 		// squares that are next to 2 or more numbers must be black. if they were white, there would be an island with more than one number
 		for(int i=0;i<size;++i) {
 			for(int j=0;j<size;++j) {
-				if (board.board[i][j] != 0) {
+				if (inProgressBoard[i][j] != '?') {
 					continue;
 				}
+				
+				
 				int count = 0;
-				for(int k=0;k<dx.length;++k) {
-					int newY = i + dy[k];
-					int newX = j + dx[k];
-					if (newY < 0 || newX < 0 || newY >= size || newX >= size) {
-						continue;
-					}
-					if (board.board[newY][newX] > 0 || inProgressBoard[newY][newX] == 'O') {
-						++count;
+				// check if putting a white square at (i,j) would cause two islands to be connected
+				int islandCount = 0;
+				int cellCount = 1;
+				int expectedCells = 0;
+				boolean[][] visited = new boolean[size][size];
+				ArrayDeque<Integer> q = new ArrayDeque<Integer>();
+				q.offer(i*size + j);
+				visited[i][j] = true;
+				while(!q.isEmpty()) {
+					int cur = q.poll();
+					int curY = cur/size;
+					int curX = cur%size;
+					for(int k=0;k<dx.length;++k) {
+						int newY = curY + dy[k];
+						int newX = curX + dx[k];
+						if (newY < 0 || newX < 0 || newY >= size || newX >= size) {
+							continue;
+						}
+						if (visited[newY][newX]) {
+							continue;
+						}
+						if (inProgressBoard[newY][newX] != 'O') {
+							continue;
+						}
+						visited[newY][newX] = true;
+						q.offer(newY*size + newX);
+						++cellCount;
+						if (board.board[newY][newX] > 0) {
+							++islandCount;
+							expectedCells += board.board[newY][newX];
+						}
 					}
 				}
-				if (count > 1) {
+				if (islandCount > 1 || (islandCount == 1 && expectedCells < cellCount)) {
 					inProgressBoard[i][j] = 'X';
 				}
 			}
@@ -219,6 +355,28 @@ public class NurikabeSolver {
 				}
 			}
 		}
+		for(int i=0;i<size-1;++i) {
+			for(int j=1;j<size;++j) {
+				if (inProgressBoard[i+1][j] == 'X' && inProgressBoard[i][j-1] == 'X' && inProgressBoard[i+1][j-1] == 'X') {
+					inProgressBoard[i][j] = 'O';
+				}
+			}
+		}
+		for(int i=1;i<size;++i) {
+			for(int j=0;j<size-1;++j) {
+				if (inProgressBoard[i-1][j] == 'X' && inProgressBoard[i][j+1] == 'X' && inProgressBoard[i-1][j+1] == 'X') {
+					inProgressBoard[i][j] = 'O';
+				}
+			}
+		}
+		for(int i=1;i<size;++i) {
+			for(int j=1;j<size;++j) {
+				if (inProgressBoard[i-1][j] == 'X' && inProgressBoard[i][j-1] == 'X' && inProgressBoard[i-1][j-1] == 'X') {
+					inProgressBoard[i][j] = 'O';
+				}
+			}
+		}
+		
 	}
 	
 	public boolean checkBoard(char[][] maybeBoard, NurikabeBoard board) {
