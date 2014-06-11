@@ -12,9 +12,13 @@
 import java.util.*;
 
 public class NurikabeSolver {
+
+  public int[] dx = new int[]{-1,1,0,0};
+  public int[] dy = new int[]{0,0,-1,1};
+  public int size;
 	
 	public char[][] solveBoard(NurikabeBoard board) {
-		int size = board.board.length;
+		size = board.board.length;
 		char[][] inProgressBoard = new char[size][size];
 		for(int i=0;i<size;++i) {
 			for(int j=0;j<size;++j) {
@@ -28,17 +32,15 @@ public class NurikabeSolver {
 		}
 		// until I add a way to track progress and figure out when a) no progress is being made and b) the puzzle is complete
 		// i will just do a certain number of iterations and then stop. hopefully it finishes by then
-		for(int i=0;i<100;++i) {
+		for(int i=0;i<10;++i) {
 			forceBlackSquares(inProgressBoard, board);
-			// for(int z=0;z<size;++z) {
-				// System.out.println(inProgressBoard[z]);
-			// }
-			// System.out.println();
 			forceWhiteSquares(inProgressBoard, board);
-			// for(int z=0;z<size;++z) {
-				// System.out.println(inProgressBoard[z]);
-			// }
-			// System.out.println();
+      board.updatePossibilities(inProgressBoard);
+      testPossibilities(inProgressBoard, board);
+      board.reducePossibilities();
+      board.updateSquarePossibilities(inProgressBoard);
+      // board.printSquarePossibilities();
+      board.printPossibilities();
 		}
 
 		return inProgressBoard;
@@ -50,9 +52,6 @@ public class NurikabeSolver {
 		char[][] maybeBoard = new char[size][size];
 		
 		for(int i=0;i<(1<<(size*size));++i) {
-			if (i % 1000000 == 0) {
-				System.out.println(i);
-			}
 			// brute force it, yo
 			int temp = i;
 			for(int j=0;j<size*size;++j) {
@@ -68,17 +67,201 @@ public class NurikabeSolver {
 	}
 	
 	public void forceBlackSquares(char[][] inProgressBoard, NurikabeBoard board) {
-		int size = board.board.length;
+		// int size = board.board.length;
 		fillInIslandSeparators(inProgressBoard, board);
 		surroundCompletedIslands(inProgressBoard, board);
 		fillInUnreachableSquares(inProgressBoard, board);
 		fillInNecessaryBlacks(inProgressBoard, board);
+    fillInBlackByPossibilities(inProgressBoard, board);
+    dontAllowSeparations(inProgressBoard, board);
 	}
 	
 	public void forceWhiteSquares(char[][] inProgressBoard, NurikabeBoard board) {
 		fillInTwoByTwos(inProgressBoard, board);
 		fillInNecessaryWhites(inProgressBoard, board);
+    preventTwoByTwos(inProgressBoard, board);
+    fillInWhiteByPossibilities(inProgressBoard, board);
 	}
+  
+  public void dontGetTooClose(char[][] inProgressBoard, NurikabeBoard board) {
+    int size = board.board.length;
+    for(int i=0;i<size;++i) {
+      for(int j=0;j<size;++j) {
+        if (inProgressBoard[i][j] == '?') {
+          
+        }
+      }
+    }
+  }
+  
+  public void testPossibilities(char[][] inProgressBoard, NurikabeBoard board) {
+    int size = board.board.length;
+    for (List<List<Set<Integer>>> llsi : board.possibilities) {
+      for (List<Set<Integer>> lsi : llsi) {
+        if (lsi.size() <= 1) {
+          continue;
+        }
+        List<Integer> toRemove = new ArrayList<Integer>();
+        for (int s=0;s<lsi.size();++s) {
+          Set<Integer> possibility = lsi.get(s);
+          System.err.println("TESTING " + possibility);
+          // this is a single possibility. let's pretend all the squares are white
+          Map<Integer, Character> oldBoard = new HashMap<Integer, Character>();
+          Set<Integer> blacksToExamine = new HashSet<Integer>();
+          for (int i : possibility) {
+            oldBoard.put(i, inProgressBoard[i/size][i%size]);
+            inProgressBoard[i/size][i%size] = 'O';
+            int curX = i%size;
+            int curY = i/size;
+            for(int d=0;d<dx.length;++d) {
+              int newX = curX+dx[d];
+              int newY = curY+dy[d];
+              if (newY < 0 || newX < 0 || newY >= size || newX >= size) {
+								continue;
+							}
+              blacksToExamine.add(newY*size+newX);
+            }
+          }
+          // we need to find an adjacent black square to test. test all of them I guess?
+          for(int b : blacksToExamine) {
+            if (inProgressBoard[b/size][b%size] == 'O') {
+              continue;
+            }
+            if (!checkIfBlacksWork(inProgressBoard, board, b/size, b%size)) {
+              System.err.println("IT FAILED");
+              toRemove.add(s);
+              break;
+            }
+          }
+          for (int i : possibility) {
+            inProgressBoard[i/size][i%size] = oldBoard.get(i);
+          }
+        }
+        for(int s=toRemove.size()-1;s>=0;--s) {
+          lsi.remove(toRemove.get(s).intValue());
+        }
+      }
+    }
+  }
+  
+  public boolean inBounds(int y, int x) {
+    return (x >= 0 && y >= 0 && x < size && y < size);
+  }
+  
+  public boolean checkIfBlacksWork(char[][] inProgressBoard, NurikabeBoard board, int i, int j) {
+    // assume all question marks are black. do we have at least the required number potentially, and are they all connected to (i,j) which will be black?
+    // if not, our possibility is bad.
+    int potential = 1;
+    boolean[][] visited = new boolean[size][size];
+    visited[i][j] = true;
+    Queue<Integer> q = new ArrayDeque<Integer>();
+    q.offer(i*size+j);
+    while(!q.isEmpty()) {
+      int cur = q.poll();
+      int curI = cur/size;
+      int curJ = cur%size;
+      for(int dd=0;dd<dx.length;++dd) {
+        int bestI = curI + dy[dd];
+        int bestJ = curJ + dx[dd];
+        if (!inBounds(bestI, bestJ)) continue;
+        if (visited[bestI][bestJ]) continue;
+        if (inProgressBoard[bestI][bestJ] == 'O') continue;
+        if (bestI == i && bestJ == j) continue;
+        ++potential;
+        q.offer(bestI*size+bestJ);
+        visited[bestI][bestJ] = true;
+      }
+    }
+    if (potential < board.totalBlacks) {
+      System.err.println("POTENTIAL " + potential + " NEEDED " + board.totalBlacks + " SQUARE " + i + " , " + j);
+      for(int z=0;z<inProgressBoard.length;++z) {
+        System.err.println(Arrays.toString(inProgressBoard[z]));
+      }
+      return false;
+    }
+    return true;
+  }
+  
+  public void dontAllowSeparations(char[][] inProgressBoard, NurikabeBoard board) {
+    for(int i=0;i<size;++i) {
+      for(int j=0;j<size;++j) {
+        if (inProgressBoard[i][j] == '?') {
+          if (i == 3 && j == 8) System.err.println("EXAMINING");
+          // if we make this square white, will it permanently disconnect a black region from another black region?
+          for(int d=0;d<dx.length;++d) {
+            int newI = i+dy[d];
+            int newJ = j+dx[d];
+            if (!inBounds(newI, newJ)) continue;
+            if (inProgressBoard[newI][newJ] != 'X') continue;
+            // assume all question marks are black. do we have at least the required number potentially?
+            // if not, (i,j) has to be black!
+            int potential = 1;
+            boolean[][] visited = new boolean[size][size];
+            visited[newI][newJ] = true;
+            Queue<Integer> q = new ArrayDeque<Integer>();
+            q.offer(newI*size+newJ);
+            while(!q.isEmpty()) {
+              int cur = q.poll();
+              int curI = cur/size;
+              int curJ = cur%size;
+              for(int dd=0;dd<dx.length;++dd) {
+                int bestI = curI + dy[dd];
+                int bestJ = curJ + dx[dd];
+                if (!inBounds(bestI, bestJ)) continue;
+                if (visited[bestI][bestJ]) continue;
+                if (inProgressBoard[bestI][bestJ] == 'O') continue;
+                if (bestI == i && bestJ == j) continue;
+                ++potential;
+                q.offer(bestI*size+bestJ);
+                if (i == 3 && j == 8 && d == 1) System.err.println("adding " + bestI + " " + bestJ);
+                visited[bestI][bestJ] = true;
+              }
+            }
+            if (i == 3 && j == 8 && d == 1) System.err.println(potential + " " + board.totalBlacks);
+            if (potential < board.totalBlacks) {
+              inProgressBoard[i][j] = 'X';
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  public void fillInBlackByPossibilities(char[][] inProgressBoard, NurikabeBoard board) {
+		int size = board.board.length;
+    for(int i=0;i<size;++i) {
+      for(int j=0;j<size;++j) {
+        if (board.squarePossibilities.get(i).get(j).size() == 1) {
+          int theOne = board.squarePossibilities.get(i).get(j).iterator().next();
+          if (theOne == -1) {
+            inProgressBoard[i][j] = 'X';
+          }
+        }
+      }
+    }
+  }
+  
+  public void fillInWhiteByPossibilities(char[][] inProgressBoard, NurikabeBoard board) {
+    int size = board.board.length;
+    for(int i=0;i<size;++i) {
+      for(int j=0;j<size;++j) {
+        if (board.possibilities.get(i).get(j).size() > 1) {
+          // find intersection, mark them all 'O'
+          Set<Integer> whites = new HashSet<Integer>();
+          for(Set<Integer> s : board.possibilities.get(i).get(j)) {
+            if (whites.size() == 0) whites.addAll(s);
+            else {
+              whites.retainAll(s);
+            }
+          }
+          for(int ii : whites) {
+            inProgressBoard[ii/size][ii%size] = 'O';
+          }
+        }
+      }
+    }
+  }
 	
 	public void fillInNecessaryWhites(char[][] inProgressBoard, NurikabeBoard board) {
 		int size = board.board.length;
@@ -376,8 +559,54 @@ public class NurikabeSolver {
 				}
 			}
 		}
-		
 	}
+  
+  public void preventTwoByTwos(char[][] inProgressBoard, NurikabeBoard board) {
+    int size = board.board.length;
+    for(int i=0;i<size;++i) {
+      for(int j=0;j<size;++j) {
+        if (inProgressBoard[i][j] == '?') {
+          // try making it black, then fill in anything around it if necessary. did you make a 2x2?
+          char[][] boardCopy = new char[size][size];
+          for(int ii=0;ii<size;++ii) {
+            for(int jj=0;jj<size;++jj) {
+              boardCopy[ii][jj] = inProgressBoard[ii][jj];
+            }
+          }
+          boardCopy[i][j] = 'X';
+          fillInUnreachableSquares(boardCopy, board);
+          if (hasTwoByTwo(boardCopy, board, i, j)) {
+            inProgressBoard[i][j] = 'O';
+          }
+        }
+      }
+    }
+  }
+  
+  public boolean hasTwoByTwo(char[][] inProgressBoard, NurikabeBoard board, int i, int j) {
+    int size = board.board.length;
+    if (i != size-1 && j != size-1) {
+      if (inProgressBoard[i+1][j] == 'X' && inProgressBoard[i][j+1] == 'X' && inProgressBoard[i+1][j+1] == 'X' && inProgressBoard[i][j] == 'X') {
+        return true;
+      }
+    }
+    if (i != size-1 && j != 0) {
+      if (inProgressBoard[i+1][j] == 'X' && inProgressBoard[i][j-1] == 'X' && inProgressBoard[i+1][j-1] == 'X' && inProgressBoard[i][j] == 'X') {
+        return true;
+      }
+    }
+    if (i != 0 && j != size-1) {
+      if (inProgressBoard[i-1][j] == 'X' && inProgressBoard[i][j+1] == 'X' && inProgressBoard[i-1][j+1] == 'X' && inProgressBoard[i][j] == 'X') {
+        return true;
+      }
+    }
+    if (i != 0 && j != 0) {
+      if (inProgressBoard[i-1][j] == 'X' && inProgressBoard[i][j-1] == 'X' && inProgressBoard[i-1][j-1] == 'X' && inProgressBoard[i][j] == 'X') {
+        return true;
+      }
+    }
+    return false;
+  }
 	
 	public boolean checkBoard(char[][] maybeBoard, NurikabeBoard board) {
 		// make sure the maybeBoard matches up with the given board with numbers
