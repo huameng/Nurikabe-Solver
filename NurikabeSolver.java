@@ -16,10 +16,11 @@ public class NurikabeSolver {
   public int[] dx = new int[]{-1,1,0,0};
   public int[] dy = new int[]{0,0,-1,1};
   public int size;
+  public char[][] inProgressBoard;
 	
 	public char[][] solveBoard(NurikabeBoard board) {
 		size = board.board.length;
-		char[][] inProgressBoard = new char[size][size];
+		inProgressBoard = new char[size][size];
 		for(int i=0;i<size;++i) {
 			for(int j=0;j<size;++j) {
 				if (board.board[i][j] == 0) {
@@ -33,10 +34,10 @@ public class NurikabeSolver {
 		// until I add a way to track progress and figure out when a) no progress is being made and b) the puzzle is complete
 		// i will just do a certain number of iterations and then stop. hopefully it finishes by then
 		for(int i=0;i<10;++i) {
-			forceBlackSquares(inProgressBoard, board);
-			forceWhiteSquares(inProgressBoard, board);
+			forceBlackSquares(board);
+			forceWhiteSquares(board);
       board.updatePossibilities(inProgressBoard);
-      testPossibilities(inProgressBoard, board);
+      testPossibilities(board);
       board.reducePossibilities();
       board.updateSquarePossibilities(inProgressBoard);
       // board.printSquarePossibilities();
@@ -66,24 +67,24 @@ public class NurikabeSolver {
 		return null;
 	}
 	
-	public void forceBlackSquares(char[][] inProgressBoard, NurikabeBoard board) {
+	public void forceBlackSquares(NurikabeBoard board) {
 		// int size = board.board.length;
-		fillInIslandSeparators(inProgressBoard, board);
-		surroundCompletedIslands(inProgressBoard, board);
+		fillInIslandSeparators(board);
+		surroundCompletedIslands(board);
 		fillInUnreachableSquares(inProgressBoard, board);
-		fillInNecessaryBlacks(inProgressBoard, board);
-    fillInBlackByPossibilities(inProgressBoard, board);
-    dontAllowSeparations(inProgressBoard, board);
+		fillInNecessaryBlacks(board);
+    fillInBlackByPossibilities(board);
+    dontAllowSeparations(board);
 	}
 	
-	public void forceWhiteSquares(char[][] inProgressBoard, NurikabeBoard board) {
-		fillInTwoByTwos(inProgressBoard, board);
-		fillInNecessaryWhites(inProgressBoard, board);
-    preventTwoByTwos(inProgressBoard, board);
-    fillInWhiteByPossibilities(inProgressBoard, board);
+	public void forceWhiteSquares(NurikabeBoard board) {
+		fillInTwoByTwos(board);
+		fillInNecessaryWhites(board);
+    preventTwoByTwos(board);
+    fillInWhiteByPossibilities(board);
 	}
   
-  public void dontGetTooClose(char[][] inProgressBoard, NurikabeBoard board) {
+  public void dontGetTooClose(NurikabeBoard board) {
     int size = board.board.length;
     for(int i=0;i<size;++i) {
       for(int j=0;j<size;++j) {
@@ -94,8 +95,7 @@ public class NurikabeSolver {
     }
   }
   
-  public void testPossibilities(char[][] inProgressBoard, NurikabeBoard board) {
-    int size = board.board.length;
+  public void testPossibilities(NurikabeBoard board) {
     for (List<List<Set<Integer>>> llsi : board.possibilities) {
       for (List<Set<Integer>> lsi : llsi) {
         if (lsi.size() <= 1) {
@@ -104,7 +104,6 @@ public class NurikabeSolver {
         List<Integer> toRemove = new ArrayList<Integer>();
         for (int s=0;s<lsi.size();++s) {
           Set<Integer> possibility = lsi.get(s);
-          System.err.println("TESTING " + possibility);
           // this is a single possibility. let's pretend all the squares are white
           Map<Integer, Character> oldBoard = new HashMap<Integer, Character>();
           Set<Integer> blacksToExamine = new HashSet<Integer>();
@@ -116,7 +115,7 @@ public class NurikabeSolver {
             for(int d=0;d<dx.length;++d) {
               int newX = curX+dx[d];
               int newY = curY+dy[d];
-              if (newY < 0 || newX < 0 || newY >= size || newX >= size) {
+              if (!inBounds(newX, newY)) {
 								continue;
 							}
               blacksToExamine.add(newY*size+newX);
@@ -127,8 +126,7 @@ public class NurikabeSolver {
             if (inProgressBoard[b/size][b%size] == 'O') {
               continue;
             }
-            if (!checkIfBlacksWork(inProgressBoard, board, b/size, b%size)) {
-              System.err.println("IT FAILED");
+            if (!checkIfBlacksWork(board, b/size, b%size)) {
               toRemove.add(s);
               break;
             }
@@ -144,11 +142,7 @@ public class NurikabeSolver {
     }
   }
   
-  public boolean inBounds(int y, int x) {
-    return (x >= 0 && y >= 0 && x < size && y < size);
-  }
-  
-  public boolean checkIfBlacksWork(char[][] inProgressBoard, NurikabeBoard board, int i, int j) {
+  public boolean checkIfBlacksWork(NurikabeBoard board, int i, int j) {
     // assume all question marks are black. do we have at least the required number potentially, and are they all connected to (i,j) which will be black?
     // if not, our possibility is bad.
     int potential = 1;
@@ -172,21 +166,13 @@ public class NurikabeSolver {
         visited[bestI][bestJ] = true;
       }
     }
-    if (potential < board.totalBlacks) {
-      System.err.println("POTENTIAL " + potential + " NEEDED " + board.totalBlacks + " SQUARE " + i + " , " + j);
-      for(int z=0;z<inProgressBoard.length;++z) {
-        System.err.println(Arrays.toString(inProgressBoard[z]));
-      }
-      return false;
-    }
-    return true;
+    return potential >= board.totalBlacks;
   }
   
-  public void dontAllowSeparations(char[][] inProgressBoard, NurikabeBoard board) {
+  public void dontAllowSeparations(NurikabeBoard board) {
     for(int i=0;i<size;++i) {
       for(int j=0;j<size;++j) {
         if (inProgressBoard[i][j] == '?') {
-          if (i == 3 && j == 8) System.err.println("EXAMINING");
           // if we make this square white, will it permanently disconnect a black region from another black region?
           for(int d=0;d<dx.length;++d) {
             int newI = i+dy[d];
@@ -213,11 +199,9 @@ public class NurikabeSolver {
                 if (bestI == i && bestJ == j) continue;
                 ++potential;
                 q.offer(bestI*size+bestJ);
-                if (i == 3 && j == 8 && d == 1) System.err.println("adding " + bestI + " " + bestJ);
                 visited[bestI][bestJ] = true;
               }
             }
-            if (i == 3 && j == 8 && d == 1) System.err.println(potential + " " + board.totalBlacks);
             if (potential < board.totalBlacks) {
               inProgressBoard[i][j] = 'X';
               break;
@@ -228,8 +212,7 @@ public class NurikabeSolver {
     }
   }
   
-  public void fillInBlackByPossibilities(char[][] inProgressBoard, NurikabeBoard board) {
-		int size = board.board.length;
+  public void fillInBlackByPossibilities(NurikabeBoard board) {
     for(int i=0;i<size;++i) {
       for(int j=0;j<size;++j) {
         if (board.squarePossibilities.get(i).get(j).size() == 1) {
@@ -242,15 +225,16 @@ public class NurikabeSolver {
     }
   }
   
-  public void fillInWhiteByPossibilities(char[][] inProgressBoard, NurikabeBoard board) {
-    int size = board.board.length;
+  public void fillInWhiteByPossibilities(NurikabeBoard board) {
     for(int i=0;i<size;++i) {
       for(int j=0;j<size;++j) {
         if (board.possibilities.get(i).get(j).size() > 1) {
           // find intersection, mark them all 'O'
           Set<Integer> whites = new HashSet<Integer>();
           for(Set<Integer> s : board.possibilities.get(i).get(j)) {
-            if (whites.size() == 0) whites.addAll(s);
+            if (whites.size() == 0) {
+              whites.addAll(s);
+            }
             else {
               whites.retainAll(s);
             }
@@ -263,8 +247,7 @@ public class NurikabeSolver {
     }
   }
 	
-	public void fillInNecessaryWhites(char[][] inProgressBoard, NurikabeBoard board) {
-		int size = board.board.length;
+	public void fillInNecessaryWhites(NurikabeBoard board) {
 		int[] dx = {0,0,1,-1};
 		int[] dy = {-1,1,0,0};
 		for(int i=0;i<size;++i) {
@@ -284,7 +267,7 @@ public class NurikabeSolver {
 						for(int k=0;k<dx.length;++k) {
 							int newY = curY + dy[k];
 							int newX = curX + dx[k];
-							if (newY < 0 || newX < 0 || newX >= size || newY >= size) {
+							if (!inBounds(newX, newY)) {
 								continue;
 							}
 							if (visited[newY][newX]) {
@@ -313,11 +296,12 @@ public class NurikabeSolver {
 			}
 		}
 	}
+  
+  public boolean inBounds(int x, int y) {
+    return (x >= 0 && y >= 0 && x < size && y < size);
+  }
 	
-	public void fillInNecessaryBlacks(char[][] inProgressBoard, NurikabeBoard board) {
-		int size = board.board.length;
-		int[] dx = {0,0,1,-1};
-		int[] dy = {-1,1,0,0};
+	public void fillInNecessaryBlacks(NurikabeBoard board) {
 		for(int i=0;i<size;++i) {
 			for(int j=0;j<size;++j) {
 				if (inProgressBoard[i][j] == 'X') {
@@ -334,15 +318,13 @@ public class NurikabeSolver {
 						for(int k=0;k<dx.length;++k) {
 							int newY = curY + dy[k];
 							int newX = curX + dx[k];
-							if (newY < 0 || newX < 0 || newX >= size || newY >= size) {
+							if (!inBounds(newX, newY)) {
 								continue;
 							}
 							if (visited[newY][newX]) {
 								continue;
 							}
 							switch (inProgressBoard[newY][newX]) {
-								case 'O':
-									break;
 								case 'X':
 									++islandSize;
 									q.offer(newY*size + newX);
@@ -365,15 +347,11 @@ public class NurikabeSolver {
 	}
 	
 	public void fillInUnreachableSquares(char[][] inProgressBoard, NurikabeBoard board) {
-		int size = board.board.length;
-		int[] dx = {0,0,1,-1};
-		int[] dy = {-1,1,0,0};
 		boolean[][] reachable = new boolean[size][size];
 		for(int i=0;i<size;++i) {
 			for(int j=0;j<size;++j) {
 				if (board.board[i][j] != 0) {
 					boolean[][] visited = new boolean[size][size];
-					// time to BFS!
 					ArrayDeque<Integer> q = new ArrayDeque<Integer>();
 					reachable[i][j] = true;
 					visited[i][j] = true;
@@ -415,18 +393,13 @@ public class NurikabeSolver {
 		}
 	}
 	
-	public void fillInIslandSeparators(char[][] inProgressBoard, NurikabeBoard board) {
-		int size = board.board.length;
-		int[] dx = {0,0,1,-1};
-		int[] dy = {-1,1,0,0};
+	public void fillInIslandSeparators(NurikabeBoard board) {
 		// squares that are next to 2 or more numbers must be black. if they were white, there would be an island with more than one number
 		for(int i=0;i<size;++i) {
 			for(int j=0;j<size;++j) {
 				if (inProgressBoard[i][j] != '?') {
 					continue;
 				}
-				
-				
 				int count = 0;
 				// check if putting a white square at (i,j) would cause two islands to be connected
 				int islandCount = 0;
@@ -468,8 +441,7 @@ public class NurikabeSolver {
 		}		
 	}
 	
-	public void surroundCompletedIslands(char[][] inProgressBoard, NurikabeBoard board) {
-		int size = board.board.length;
+	public void surroundCompletedIslands(NurikabeBoard board) {
 		int[] dx = {0,0,1,-1};
 		int[] dy = {-1,1,0,0};
 		boolean[][] visited = new boolean[size][size];
@@ -529,8 +501,7 @@ public class NurikabeSolver {
 		}
 	}
 	
-	public void fillInTwoByTwos(char[][] inProgressBoard, NurikabeBoard board) {
-		int size = board.board.length;
+	public void fillInTwoByTwos(NurikabeBoard board) {
 		for(int i=0;i<size-1;++i) {
 			for(int j=0;j<size-1;++j) {
 				if (inProgressBoard[i+1][j] == 'X' && inProgressBoard[i][j+1] == 'X' && inProgressBoard[i+1][j+1] == 'X') {
@@ -561,8 +532,7 @@ public class NurikabeSolver {
 		}
 	}
   
-  public void preventTwoByTwos(char[][] inProgressBoard, NurikabeBoard board) {
-    int size = board.board.length;
+  public void preventTwoByTwos(NurikabeBoard board) {
     for(int i=0;i<size;++i) {
       for(int j=0;j<size;++j) {
         if (inProgressBoard[i][j] == '?') {
@@ -584,7 +554,6 @@ public class NurikabeSolver {
   }
   
   public boolean hasTwoByTwo(char[][] inProgressBoard, NurikabeBoard board, int i, int j) {
-    int size = board.board.length;
     if (i != size-1 && j != size-1) {
       if (inProgressBoard[i+1][j] == 'X' && inProgressBoard[i][j+1] == 'X' && inProgressBoard[i+1][j+1] == 'X' && inProgressBoard[i][j] == 'X') {
         return true;
@@ -610,7 +579,6 @@ public class NurikabeSolver {
 	
 	public boolean checkBoard(char[][] maybeBoard, NurikabeBoard board) {
 		// make sure the maybeBoard matches up with the given board with numbers
-		int size = maybeBoard.length;
 		Queue<Integer> q = new LinkedList<Integer>();
 		
 		int visitCount = 0;
@@ -620,8 +588,6 @@ public class NurikabeSolver {
 		boolean result = true;
 		boolean[][] visited = new boolean[size][size];
 		
-		int[] dx = {0,0,1,-1};
-		int[] dy = {1,-1,0,0};
 		for(int i=0;i<size*size;++i) {
 			if (maybeBoard[i/size][i%size] == 'X') {
 				if (blackFound == 0) {
@@ -655,7 +621,6 @@ public class NurikabeSolver {
 			}
 		}
 		if (blackFound != visitCount) {
-			// result = false;
 			return false;
 		}
 		
@@ -666,7 +631,6 @@ public class NurikabeSolver {
 		}
 		
 		if (blackNeeded != blackFound) {
-			// result = false;
 			return false;
 		}
 		
@@ -675,7 +639,6 @@ public class NurikabeSolver {
 			for(int j=0;j<size-1;++j) {
 				if (maybeBoard[i][j] == 'X') {
 					if (maybeBoard[i+1][j] == 'X' && maybeBoard[i][j+1] == 'X' && maybeBoard[i+1][j+1] == 'X') {
-						// result = false;
 						return false;
 					}
 				}
@@ -717,7 +680,6 @@ public class NurikabeSolver {
 					}
 				}
 				if (numbersFound != 1 || numbersSum != poolSize) {
-					// result = false;
 					return false;
 				}
 			}
